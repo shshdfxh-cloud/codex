@@ -431,6 +431,23 @@ private fun CompactDraftEditor(
     onSaveDraft: () -> Unit,
     onCancelDraft: () -> Unit
 ) {
+    var startFields by remember(draft.start) { mutableStateOf(draft.start.toLocalTime().toDraftHmsFields()) }
+    var endFields by remember(draft.end) { mutableStateOf(draft.end.toLocalTime().toDraftHmsFields()) }
+
+    fun updateStart(updated: DraftHmsFields) {
+        startFields = updated
+        updated.toLocalTimeOrNull()?.let { localTime ->
+            onDraftChange(draft.copy(start = draft.start.withClockTime(localTime)))
+        }
+    }
+
+    fun updateEnd(updated: DraftHmsFields) {
+        endFields = updated
+        updated.toLocalTimeOrNull()?.let { localTime ->
+            onDraftChange(draft.copy(end = draft.end.withClockTime(localTime)))
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -442,22 +459,14 @@ private fun CompactDraftEditor(
         ) {
             DraftHmsEditorRow(
                 label = "开始",
-                value = draft.start.toLocalTime().toDraftHmsFields(),
-                onValueChange = { hms ->
-                    hms.toLocalTimeOrNull()?.let { localTime ->
-                        onDraftChange(draft.copy(start = draft.start.withClockTime(localTime)))
-                    }
-                },
+                value = startFields,
+                onValueChange = ::updateStart,
                 modifier = Modifier.weight(1f)
             )
             DraftHmsEditorRow(
                 label = "结束",
-                value = draft.end.toLocalTime().toDraftHmsFields(),
-                onValueChange = { hms ->
-                    hms.toLocalTimeOrNull()?.let { localTime ->
-                        onDraftChange(draft.copy(end = draft.end.withClockTime(localTime)))
-                    }
-                },
+                value = endFields,
+                onValueChange = ::updateEnd,
                 modifier = Modifier.weight(1f)
             )
         }
