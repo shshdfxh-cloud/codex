@@ -330,7 +330,7 @@ private fun RingChart(
                         val tappedSecond = (normalized / 360f) * 86400f
                         val selectedEntry = entries.firstOrNull { entry ->
                             val start = entry.start.toLocalTime().toSecondOfDay().toFloat()
-                            val end = entry.end.toLocalTime().toSecondOfDay().toFloat()
+                            val end = entry.endSecondOfDayForChart()
                             tappedSecond in start..end
                         }
                         onSelectedRingEntry(selectedEntry?.id)
@@ -378,7 +378,7 @@ private fun RingChart(
             val startAngle = secondsToAngle(entry.start.toLocalTime().toSecondOfDay().toFloat())
             val sweepAngle = secondsToSweep(
                 entry.start.toLocalTime().toSecondOfDay().toFloat(),
-                entry.end.toLocalTime().toSecondOfDay().toFloat()
+                entry.endSecondOfDayForChart()
             )
             if (sweepAngle <= 0f) return@forEach
 
@@ -1013,6 +1013,14 @@ private fun secondsToAngle(seconds: Float): Float {
 
 private fun secondsToSweep(startSeconds: Float, endSeconds: Float): Float {
     return ((endSeconds - startSeconds).coerceAtLeast(0f) / 86400f) * 360f
+}
+
+private fun TimeEntry.endSecondOfDayForChart(): Float {
+    return if (end.toLocalTime() == LocalTime.MIDNIGHT && end.toLocalDate().isAfter(start.toLocalDate())) {
+        86400f
+    } else {
+        end.toLocalTime().toSecondOfDay().toFloat()
+    }
 }
 
 private fun angleToRadians(angle: Float): Double {
