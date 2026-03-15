@@ -56,6 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -456,6 +458,10 @@ private fun CompactDraftEditor(
                 modifier = Modifier
                     .weight(1f)
                     .height(42.dp),
+                textStyle = TextStyle(
+                    lineHeight = 20.sp,
+                    platformStyle = PlatformTextStyle(includeFontPadding = true)
+                ),
                 singleLine = true,
                 maxLines = 1,
                 shape = RoundedCornerShape(14.dp),
