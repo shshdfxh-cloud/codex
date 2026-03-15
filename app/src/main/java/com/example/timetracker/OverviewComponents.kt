@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -979,10 +980,19 @@ private fun SmallNumberField(
     maxLength: Int,
     onValueChange: (String) -> Unit
 ) {
+    var isFocused by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = { input -> onValueChange(input.filter(Char::isDigit).take(maxLength)) },
-        modifier = Modifier.width(width),
+        modifier = Modifier
+            .width(width)
+            .onFocusChanged { state ->
+                val wasFocused = isFocused
+                isFocused = state.isFocused
+                if (wasFocused && !state.isFocused && value.isBlank()) {
+                    onValueChange("0".padStart(maxLength, '0'))
+                }
+            },
         singleLine = true,
         label = { Text(label) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)

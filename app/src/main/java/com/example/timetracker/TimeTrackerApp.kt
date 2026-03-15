@@ -57,9 +57,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
@@ -70,7 +69,6 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 private const val CAT_WORK = "工作"
 private const val CAT_FUN = "娱乐"
@@ -450,19 +448,23 @@ private fun CompactDraftEditor(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ClockInputField(
+            DraftHmsEditorRow(
                 label = "开始",
-                timeText = draft.start.toLocalTime().format(DRAFT_TIME_FORMATTER),
-                onTimeChanged = { localTime ->
-                    onDraftChange(draft.copy(start = draft.start.withClockTime(localTime)))
+                value = draft.start.toLocalTime().toDraftHmsFields(),
+                onValueChange = { hms ->
+                    hms.toLocalTimeOrNull()?.let { localTime ->
+                        onDraftChange(draft.copy(start = draft.start.withClockTime(localTime)))
+                    }
                 },
                 modifier = Modifier.weight(1f)
             )
-            ClockInputField(
+            DraftHmsEditorRow(
                 label = "结束",
-                timeText = draft.end.toLocalTime().format(DRAFT_TIME_FORMATTER),
-                onTimeChanged = { localTime ->
-                    onDraftChange(draft.copy(end = draft.end.withClockTime(localTime)))
+                value = draft.end.toLocalTime().toDraftHmsFields(),
+                onValueChange = { hms ->
+                    hms.toLocalTimeOrNull()?.let { localTime ->
+                        onDraftChange(draft.copy(end = draft.end.withClockTime(localTime)))
+                    }
                 },
                 modifier = Modifier.weight(1f)
             )
@@ -507,72 +509,86 @@ private fun CompactDraftEditor(
 }
 
 
-private val DRAFT_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+private data class DraftHmsFields(
+    val hour: String,
+    val minute: String,
+    val second: String
+)
+
+private fun LocalTime.toDraftHmsFields(): DraftHmsFields = DraftHmsFields(
+    hour = hour.toString().padStart(2, '0'),
+    minute = minute.toString().padStart(2, '0'),
+    second = second.toString().padStart(2, '0')
+)
+
+private fun DraftHmsFields.toLocalTimeOrNull(): LocalTime? {
+    val h = hour.toIntOrNull() ?: return null
+    val m = minute.toIntOrNull() ?: return null
+    val s = second.toIntOrNull() ?: return null
+    if (h !in 0..23 || m !in 0..59 || s !in 0..59) return null
+    return LocalTime.of(h, m, s)
+}
 
 @Composable
-private fun ClockInputField(
+private fun DraftHmsEditorRow(
     label: String,
-    timeText: String,
-    onTimeChanged: (LocalTime) -> Unit,
+    value: DraftHmsFields,
+    onValueChange: (DraftHmsFields) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var input by remember(timeText) { mutableStateOf(timeText) }
-    var isFocused by remember { mutableStateOf(false) }
-
-    Column(modifier = modifier) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = Color(0xFF757575),
-            modifier = Modifier.padding(start = 2.dp)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = Color.White,
-            border = BorderStroke(1.dp, if (isFocused) Color(0xFF262626) else Color(0xFFB8B0A6)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(42.dp)
-        ) {
-            BasicTextField(
-                value = input,
-                onValueChange = { typed ->
-                    val filtered = typed.filter { it.isDigit() || it == ':' }.take(8)
-                    input = filtered
-                    parseDraftTime(filtered)?.let(onTimeChanged)
-                },
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 15.sp, color = Color(0xFF1E1E1E), lineHeight = 20.sp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { state ->
-                        val wasFocused = isFocused
-                        isFocused = state.isFocused
-                        if (wasFocused && !state.isFocused) {
-                            val parsed = parseDraftTime(input)
-                            if (parsed != null) {
-                                input = parsed.format(DRAFT_TIME_FORMATTER)
-                            } else if (input.isBlank()) {
-                                val zero = LocalTime.MIDNIGHT
-                                input = zero.format(DRAFT_TIME_FORMATTER)
-                                onTimeChanged(zero)
-                            } else {
-                                input = timeText
-                            }
-                        }
-                    }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                decorationBox = { innerTextField ->
-                    if (input.isBlank()) {
-                        Text("HH:mm:ss", color = Color(0xFF9E9E9E), fontSize = 15.sp)
-                    }
-                    innerTextField()
-                }
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, fontSize = 12.sp, color = Color(0xFF757575), modifier = Modifier.padding(start = 2.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DraftSmallNumberField(
+                value = value.hour,
+                fieldLabel = "时",
+                width = 58.dp,
+                maxLength = 2,
+                onValueChange = { onValueChange(value.copy(hour = it)) }
+            )
+            DraftSmallNumberField(
+                value = value.minute,
+                fieldLabel = "分",
+                width = 58.dp,
+                maxLength = 2,
+                onValueChange = { onValueChange(value.copy(minute = it)) }
+            )
+            DraftSmallNumberField(
+                value = value.second,
+                fieldLabel = "秒",
+                width = 58.dp,
+                maxLength = 2,
+                onValueChange = { onValueChange(value.copy(second = it)) }
             )
         }
     }
+}
+
+@Composable
+private fun DraftSmallNumberField(
+    value: String,
+    fieldLabel: String,
+    width: Dp,
+    maxLength: Int,
+    onValueChange: (String) -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input -> onValueChange(input.filter(Char::isDigit).take(maxLength)) },
+        modifier = Modifier
+            .width(width)
+            .onFocusChanged { state ->
+                val wasFocused = isFocused
+                isFocused = state.isFocused
+                if (wasFocused && !state.isFocused && value.isBlank()) {
+                    onValueChange("0".padStart(maxLength, '0'))
+                }
+            },
+        singleLine = true,
+        label = { Text(fieldLabel) },
+        textStyle = TextStyle(fontSize = 14.sp)
+    )
 }
 
 @Composable
@@ -607,8 +623,6 @@ private fun NoteInputField(
     }
 }
 
-private fun parseDraftTime(text: String): LocalTime? =
-    runCatching { LocalTime.parse(text, DRAFT_TIME_FORMATTER) }.getOrNull()
 
 private fun LocalDateTime.withClockTime(time: LocalTime): LocalDateTime =
     withHour(time.hour).withMinute(time.minute).withSecond(time.second).withNano(0)
