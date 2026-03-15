@@ -32,8 +32,6 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Build Release APK
-        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
@@ -42,9 +40,3 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload Release APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release-apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: error

@@ -547,7 +547,22 @@ private fun ClockInputField(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onFocusChanged { isFocused = it.isFocused }
+                    .onFocusChanged { state ->
+                        val wasFocused = isFocused
+                        isFocused = state.isFocused
+                        if (wasFocused && !state.isFocused) {
+                            val parsed = parseDraftTime(input)
+                            if (parsed != null) {
+                                input = parsed.format(DRAFT_TIME_FORMATTER)
+                            } else if (input.isBlank()) {
+                                val zero = LocalTime.MIDNIGHT
+                                input = zero.format(DRAFT_TIME_FORMATTER)
+                                onTimeChanged(zero)
+                            } else {
+                                input = timeText
+                            }
+                        }
+                    }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 decorationBox = { innerTextField ->
                     if (input.isBlank()) {
