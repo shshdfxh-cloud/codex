@@ -222,17 +222,18 @@ fun TimeTrackerApp() {
                     },
                     onSaveDraft = {
                         pendingDraft?.let { draft ->
-                            val normalizedEnd = if (draft.end.isBefore(draft.start)) draft.start else draft.end
-                            entries.add(
+                            val (normalizedStart, normalizedEnd) = normalizeDraftRange(draft.start, draft.end)
+                            val splitEntries = splitRangeByDay(normalizedStart, normalizedEnd).map { (segmentStart, segmentEnd) ->
                                 TimeEntry(
                                     category = draft.category,
                                     note = draft.note.trim(),
-                                    start = draft.start,
-                                    end = normalizedEnd
+                                    start = segmentStart,
+                                    end = segmentEnd
                                 )
-                            )
+                            }
+                            entries.addAll(splitEntries)
                             selectedCategory = draft.category
-                            selectedOverviewDateText = draft.start.toLocalDate().toString()
+                            selectedOverviewDateText = normalizedStart.toLocalDate().toString()
                             pendingDraft = null
                             elapsedMillis = 0L
                         }
@@ -624,6 +625,28 @@ private fun NoteInputField(
     }
 }
 
+
+
+private fun normalizeDraftRange(start: LocalDateTime, end: LocalDateTime): Pair<LocalDateTime, LocalDateTime> {
+    val normalizedEnd = if (end.isBefore(start)) end.plusDays(1) else end
+    return start to normalizedEnd
+}
+
+private fun splitRangeByDay(start: LocalDateTime, end: LocalDateTime): List<Pair<LocalDateTime, LocalDateTime>> {
+    if (!end.isAfter(start)) return emptyList()
+
+    val segments = mutableListOf<Pair<LocalDateTime, LocalDateTime>>()
+    var cursor = start
+
+    while (cursor.toLocalDate().isBefore(end.toLocalDate())) {
+        val midnight = cursor.toLocalDate().plusDays(1).atStartOfDay()
+        segments.add(cursor to midnight)
+        cursor = midnight
+    }
+
+    segments.add(cursor to end)
+    return segments
+}
 
 private fun LocalDateTime.withClockTime(time: LocalTime): LocalDateTime =
     withHour(time.hour).withMinute(time.minute).withSecond(time.second).withNano(0)
