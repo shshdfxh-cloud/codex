@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -87,6 +88,7 @@ private const val TXT_EDIT_ENTRY = "编辑时间块"
 private const val TXT_START = "开始"
 private const val TXT_END = "结束"
 private const val TXT_DURATION = "时长"
+private const val TXT_DATE = "日期"
 private const val TXT_EMPTY_DAY = "这一天还没有记录。"
 private const val TXT_NO_RECORD = "暂无记录"
 
@@ -328,7 +330,7 @@ private fun RingChart(
                         val tappedSecond = (normalized / 360f) * 86400f
                         val selectedEntry = entries.firstOrNull { entry ->
                             val start = entry.start.toLocalTime().toSecondOfDay().toFloat()
-                            val end = entry.end.toLocalTime().toSecondOfDay().toFloat()
+                            val end = entry.endSecondOfDayForChart()
                             tappedSecond in start..end
                         }
                         onSelectedRingEntry(selectedEntry?.id)
@@ -376,7 +378,7 @@ private fun RingChart(
             val startAngle = secondsToAngle(entry.start.toLocalTime().toSecondOfDay().toFloat())
             val sweepAngle = secondsToSweep(
                 entry.start.toLocalTime().toSecondOfDay().toFloat(),
-                entry.end.toLocalTime().toSecondOfDay().toFloat()
+                entry.endSecondOfDayForChart()
             )
             if (sweepAngle <= 0f) return@forEach
 
@@ -720,7 +722,7 @@ private fun SwipeableEntryCard(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = formatTimeRange(entry.start.toLocalTime(), entry.end.toLocalTime()),
+                                text = formatTimeRange(entry.start, entry.end),
                                 color = contentColor.copy(alpha = 0.9f),
                                 fontSize = 12.sp
                             )
@@ -803,8 +805,9 @@ fun EditEntryDialog(
     onSave: (TimeEntry) -> Unit
 ) {
     var category by remember(entry.id) { mutableStateOf(entry.category) }
+    var date by remember(entry.id) { mutableStateOf(entry.start.toLocalDate()) }
     var startFields by remember(entry.id) { mutableStateOf(entry.start.toLocalTime().toHmsFields()) }
-    var endFields by remember(entry.id) { mutableStateOf(entry.end.toLocalTime().toHmsFields()) }
+    var endFields by remember(entry.id) { mutableStateOf(entry.toEndHmsFields()) }
     var durationFields by remember(entry.id) { mutableStateOf(entry.duration.toHmsFields()) }
     var note by remember(entry.id) { mutableStateOf(entry.note) }
 
@@ -819,10 +822,10 @@ fun EditEntryDialog(
 
     fun updateEnd(updated: HmsFields) {
         endFields = updated
-        val start = startFields.toLocalTimeOrNull()
-        val end = updated.toLocalTimeOrNull()
-        if (start != null && end != null && !end.isBefore(start)) {
-            durationFields = Duration.between(start, end).toHmsFields()
+        val startSeconds = startFields.toSecondsOfDayOrNull()
+        val endSeconds = updated.toSecondsOfDayAllow24OrNull()
+        if (startSeconds != null && endSeconds != null && endSeconds >= startSeconds) {
+            durationFields = Duration.ofSeconds((endSeconds - startSeconds).toLong()).toHmsFields()
         }
     }
 
@@ -845,6 +848,13 @@ fun EditEntryDialog(
                     categories = categories,
                     onSelected = { category = it }
                 )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(text = TXT_DATE, color = Color(0xFF4A4A4A), fontSize = 13.sp)
+                    DateSelector(
+                        selectedDate = date,
+                        onSelectedDate = { date = it }
+                    )
+                }
                 HmsEditorRow(TXT_START, startFields, 2, ::updateStart)
                 HmsEditorRow(TXT_END, endFields, 2, ::updateEnd)
                 HmsEditorRow(TXT_DURATION, durationFields, 3, ::updateDuration)
@@ -860,11 +870,10 @@ fun EditEntryDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val date = entry.start.toLocalDate()
                     val startTime = startFields.toLocalTimeOrNull() ?: entry.start.toLocalTime()
                     val duration = durationFields.toDurationOrNull()
                     val startDateTime = LocalDateTime.of(date, startTime)
-                    val candidateEnd = endFields.toLocalTimeOrNull()?.let { LocalDateTime.of(date, it) }
+                    val candidateEnd = endFields.toEndDateTimeOrNull(date)
                     val endDateTime = when {
                         duration != null -> startDateTime.plusSeconds(duration.seconds)
                         candidateEnd != null && !candidateEnd.isBefore(startDateTime) -> candidateEnd
@@ -979,10 +988,19 @@ private fun SmallNumberField(
     maxLength: Int,
     onValueChange: (String) -> Unit
 ) {
+    var isFocused by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = { input -> onValueChange(input.filter(Char::isDigit).take(maxLength)) },
-        modifier = Modifier.width(width),
+        modifier = Modifier
+            .width(width)
+            .onFocusChanged { state ->
+                val wasFocused = isFocused
+                isFocused = state.isFocused
+                if (wasFocused && !state.isFocused && value.isBlank()) {
+                    onValueChange("0".padStart(maxLength, '0'))
+                }
+            },
         singleLine = true,
         label = { Text(label) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -995,6 +1013,14 @@ private fun secondsToAngle(seconds: Float): Float {
 
 private fun secondsToSweep(startSeconds: Float, endSeconds: Float): Float {
     return ((endSeconds - startSeconds).coerceAtLeast(0f) / 86400f) * 360f
+}
+
+private fun TimeEntry.endSecondOfDayForChart(): Float {
+    return if (end.toLocalTime() == LocalTime.MIDNIGHT && end.toLocalDate().isAfter(start.toLocalDate())) {
+        86400f
+    } else {
+        end.toLocalTime().toSecondOfDay().toFloat()
+    }
 }
 
 private fun angleToRadians(angle: Float): Double {
@@ -1069,6 +1095,46 @@ private fun HmsFields.toLocalTimeOrNull(): LocalTime? {
     val secondValue = second.toIntOrNull() ?: return null
     if (hourValue !in 0..23 || minuteValue !in 0..59 || secondValue !in 0..59) return null
     return LocalTime.of(hourValue, minuteValue, secondValue)
+}
+
+private fun HmsFields.toSecondsOfDayOrNull(): Int? {
+    val hourValue = hour.toIntOrNull() ?: return null
+    val minuteValue = minute.toIntOrNull() ?: return null
+    val secondValue = second.toIntOrNull() ?: return null
+    if (hourValue !in 0..23 || minuteValue !in 0..59 || secondValue !in 0..59) return null
+    return hourValue * 3600 + minuteValue * 60 + secondValue
+}
+
+private fun HmsFields.toSecondsOfDayAllow24OrNull(): Int? {
+    val hourValue = hour.toIntOrNull() ?: return null
+    val minuteValue = minute.toIntOrNull() ?: return null
+    val secondValue = second.toIntOrNull() ?: return null
+    return when {
+        hourValue in 0..23 && minuteValue in 0..59 && secondValue in 0..59 -> {
+            hourValue * 3600 + minuteValue * 60 + secondValue
+        }
+
+        hourValue == 24 && minuteValue == 0 && secondValue == 0 -> 24 * 3600
+        else -> null
+    }
+}
+
+private fun HmsFields.toEndDateTimeOrNull(date: LocalDate): LocalDateTime? {
+    val seconds = toSecondsOfDayAllow24OrNull() ?: return null
+    return if (seconds == 24 * 3600) {
+        date.plusDays(1).atStartOfDay()
+    } else {
+        LocalDateTime.of(date, LocalTime.ofSecondOfDay(seconds.toLong()))
+    }
+}
+
+private fun TimeEntry.toEndHmsFields(): HmsFields {
+    val isMidnightNextDay = end.toLocalTime() == LocalTime.MIDNIGHT && end.toLocalDate().isAfter(start.toLocalDate())
+    return if (isMidnightNextDay) {
+        HmsFields(hour = "24", minute = "00", second = "00")
+    } else {
+        end.toLocalTime().toHmsFields()
+    }
 }
 
 private fun HmsFields.toDurationOrNull(): Duration? {

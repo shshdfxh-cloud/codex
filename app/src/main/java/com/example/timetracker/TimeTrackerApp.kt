@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,8 +40,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,8 +56,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -65,6 +68,7 @@ import kotlinx.coroutines.flow.collectLatest
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 private const val CAT_WORK = "工作"
 private const val CAT_FUN = "娱乐"
@@ -174,7 +178,14 @@ fun TimeTrackerApp() {
                 ).forEach { (item, icon) ->
                     NavigationBarItem(
                         selected = item == tab,
-                        onClick = { tab = item },
+                        onClick = {
+                            if (item == Tab.Overview) {
+                                selectedOverviewDateText = LocalDate.now().toString()
+                                selectedRingEntryId = null
+                                expandedEntryId = null
+                            }
+                            tab = item
+                        },
                         icon = { Icon(icon, contentDescription = item.label) },
                         label = { Text(item.label) }
                     )
@@ -218,16 +229,17 @@ fun TimeTrackerApp() {
                     },
                     onSaveDraft = {
                         pendingDraft?.let { draft ->
-                            entries.add(
+                            val (normalizedStart, normalizedEnd) = normalizeDraftRange(draft.start, draft.end)
+                            val splitEntries = splitRangeByDay(normalizedStart, normalizedEnd).map { (segmentStart, segmentEnd) ->
                                 TimeEntry(
                                     category = draft.category,
                                     note = draft.note.trim(),
-                                    start = draft.start,
-                                    end = draft.end
+                                    start = segmentStart,
+                                    end = segmentEnd
                                 )
-                            )
+                            }
+                            entries.addAll(splitEntries)
                             selectedCategory = draft.category
-                            selectedOverviewDateText = draft.start.toLocalDate().toString()
                             pendingDraft = null
                             elapsedMillis = 0L
                         }
@@ -426,19 +438,46 @@ private fun CompactDraftEditor(
     onSaveDraft: () -> Unit,
     onCancelDraft: () -> Unit
 ) {
+    var startFields by remember(draft.start) { mutableStateOf(draft.start.toLocalTime().toDraftHmsFields()) }
+    var endFields by remember(draft.end) { mutableStateOf(draft.end.toLocalTime().toDraftHmsFields()) }
+
+    fun updateStart(updated: DraftHmsFields) {
+        startFields = updated
+        updated.toLocalTimeOrNull()?.let { localTime ->
+            onDraftChange(draft.copy(start = draft.start.withClockTime(localTime)))
+        }
+    }
+
+    fun updateEnd(updated: DraftHmsFields) {
+        endFields = updated
+        updated.toLocalTimeOrNull()?.let { localTime ->
+            onDraftChange(draft.copy(end = draft.end.withClockTime(localTime)))
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 2.dp, end = 2.dp, bottom = 10.dp)
     ) {
-        Text(
-            text = formatTimeRange(draft.start.toLocalTime(), draft.end.toLocalTime()),
-            color = Color(0xFF4B4B4B),
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(start = 2.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            DraftHmsEditorRow(
+                label = "开始",
+                value = startFields,
+                onValueChange = ::updateStart,
+                modifier = Modifier.weight(1f)
+            )
+            DraftHmsEditorRow(
+                label = "结束",
+                value = endFields,
+                onValueChange = ::updateEnd,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -450,23 +489,12 @@ private fun CompactDraftEditor(
                 modifier = Modifier.width(74.dp),
                 onSelected = { onDraftChange(draft.copy(category = it)) }
             )
-            TextField(
+            NoteInputField(
                 value = draft.note,
                 onValueChange = { onDraftChange(draft.copy(note = it)) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(42.dp),
-                singleLine = true,
-                maxLines = 1,
-                shape = RoundedCornerShape(14.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White,
-                    disabledContainerColor = Color.White,
-                    focusedIndicatorColor = Color(0xFF262626),
-                    unfocusedIndicatorColor = Color(0xFFB8B0A6),
-                    disabledIndicatorColor = Color(0xFFB8B0A6)
-                )
+                    .height(42.dp)
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
@@ -487,6 +515,147 @@ private fun CompactDraftEditor(
         }
     }
 }
+
+
+private data class DraftHmsFields(
+    val hour: String,
+    val minute: String,
+    val second: String
+)
+
+private fun LocalTime.toDraftHmsFields(): DraftHmsFields = DraftHmsFields(
+    hour = hour.toString(),
+    minute = minute.toString(),
+    second = second.toString()
+)
+
+private fun DraftHmsFields.toLocalTimeOrNull(): LocalTime? {
+    val h = hour.toIntOrNull() ?: return null
+    val m = minute.toIntOrNull() ?: return null
+    val s = second.toIntOrNull() ?: return null
+    if (h !in 0..23 || m !in 0..59 || s !in 0..59) return null
+    return LocalTime.of(h, m, s)
+}
+
+@Composable
+private fun DraftHmsEditorRow(
+    label: String,
+    value: DraftHmsFields,
+    onValueChange: (DraftHmsFields) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, fontSize = 11.sp, color = Color(0xFF757575), modifier = Modifier.padding(start = 2.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            DraftSmallNumberField(
+                value = value.hour,
+                fieldLabel = "时",
+                width = 46.dp,
+                maxLength = 2,
+                onValueChange = { onValueChange(value.copy(hour = it)) }
+            )
+            DraftSmallNumberField(
+                value = value.minute,
+                fieldLabel = "分",
+                width = 46.dp,
+                maxLength = 2,
+                onValueChange = { onValueChange(value.copy(minute = it)) }
+            )
+            DraftSmallNumberField(
+                value = value.second,
+                fieldLabel = "秒",
+                width = 46.dp,
+                maxLength = 2,
+                onValueChange = { onValueChange(value.copy(second = it)) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun DraftSmallNumberField(
+    value: String,
+    fieldLabel: String,
+    width: Dp,
+    maxLength: Int,
+    onValueChange: (String) -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input -> onValueChange(input.filter(Char::isDigit).take(maxLength)) },
+        modifier = Modifier
+            .width(width)
+            .onFocusChanged { state ->
+                val wasFocused = isFocused
+                isFocused = state.isFocused
+                if (wasFocused && !state.isFocused && value.isBlank()) {
+                    onValueChange("0".padStart(maxLength, '0'))
+                }
+            },
+        singleLine = true,
+        label = { Text(fieldLabel) },
+        textStyle = TextStyle(fontSize = 13.sp)
+    )
+}
+
+@Composable
+private fun NoteInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, if (isFocused) Color(0xFF262626) else Color(0xFFB8B0A6)),
+        modifier = modifier
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 15.sp, color = Color(0xFF1E1E1E), lineHeight = 20.sp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { isFocused = it.isFocused }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            decorationBox = { innerTextField ->
+                if (value.isBlank()) {
+                    Text("具体事项", color = Color(0xFF9E9E9E), fontSize = 15.sp)
+                }
+                innerTextField()
+            }
+        )
+    }
+}
+
+
+
+private fun normalizeDraftRange(start: LocalDateTime, end: LocalDateTime): Pair<LocalDateTime, LocalDateTime> {
+    val normalizedEnd = if (end.isBefore(start)) end.plusDays(1) else end
+    return start to normalizedEnd
+}
+
+private fun splitRangeByDay(start: LocalDateTime, end: LocalDateTime): List<Pair<LocalDateTime, LocalDateTime>> {
+    if (!end.isAfter(start)) return emptyList()
+
+    val segments = mutableListOf<Pair<LocalDateTime, LocalDateTime>>()
+    var cursor = start
+
+    while (cursor.toLocalDate().isBefore(end.toLocalDate())) {
+        val midnight = cursor.toLocalDate().plusDays(1).atStartOfDay()
+        segments.add(cursor to midnight)
+        cursor = midnight
+    }
+
+    segments.add(cursor to end)
+    return segments
+}
+
+private fun LocalDateTime.withClockTime(time: LocalTime): LocalDateTime =
+    withHour(time.hour).withMinute(time.minute).withSecond(time.second).withNano(0)
 
 @Composable
 private fun CategoryDropdownField(
