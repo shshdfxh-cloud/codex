@@ -436,14 +436,6 @@ private fun CompactDraftEditor(
             .fillMaxWidth()
             .padding(start = 2.dp, end = 2.dp, bottom = 10.dp)
     ) {
-        Text(
-            text = formatTimeRange(draft.start.toLocalTime(), draft.end.toLocalTime()),
-            color = Color(0xFF4B4B4B),
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(start = 2.dp)
-        )
-        Spacer(modifier = Modifier.height(6.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -536,27 +528,27 @@ private fun DraftHmsEditorRow(
     onValueChange: (DraftHmsFields) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, fontSize = 12.sp, color = Color(0xFF757575), modifier = Modifier.padding(start = 2.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, fontSize = 11.sp, color = Color(0xFF757575), modifier = Modifier.padding(start = 2.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             DraftSmallNumberField(
                 value = value.hour,
                 fieldLabel = "时",
-                width = 58.dp,
+                width = 46.dp,
                 maxLength = 2,
                 onValueChange = { onValueChange(value.copy(hour = it)) }
             )
             DraftSmallNumberField(
                 value = value.minute,
                 fieldLabel = "分",
-                width = 58.dp,
+                width = 46.dp,
                 maxLength = 2,
                 onValueChange = { onValueChange(value.copy(minute = it)) }
             )
             DraftSmallNumberField(
                 value = value.second,
                 fieldLabel = "秒",
-                width = 58.dp,
+                width = 46.dp,
                 maxLength = 2,
                 onValueChange = { onValueChange(value.copy(second = it)) }
             )
@@ -587,7 +579,7 @@ private fun DraftSmallNumberField(
             },
         singleLine = true,
         label = { Text(fieldLabel) },
-        textStyle = TextStyle(fontSize = 14.sp)
+        textStyle = TextStyle(fontSize = 13.sp)
     )
 }
 
