@@ -517,9 +517,9 @@ private data class DraftHmsFields(
 )
 
 private fun LocalTime.toDraftHmsFields(): DraftHmsFields = DraftHmsFields(
-    hour = hour.toString().padStart(2, '0'),
-    minute = minute.toString().padStart(2, '0'),
-    second = second.toString().padStart(2, '0')
+    hour = hour.toString(),
+    minute = minute.toString(),
+    second = second.toString()
 )
 
 private fun DraftHmsFields.toLocalTimeOrNull(): LocalTime? {
