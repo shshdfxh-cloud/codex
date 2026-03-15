@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,8 +40,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,10 +56,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -67,6 +69,8 @@ import kotlinx.coroutines.flow.collectLatest
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 private const val CAT_WORK = "工作"
 private const val CAT_FUN = "娱乐"
@@ -220,12 +224,13 @@ fun TimeTrackerApp() {
                     },
                     onSaveDraft = {
                         pendingDraft?.let { draft ->
+                            val normalizedEnd = if (draft.end.isBefore(draft.start)) draft.start else draft.end
                             entries.add(
                                 TimeEntry(
                                     category = draft.category,
                                     note = draft.note.trim(),
                                     start = draft.start,
-                                    end = draft.end
+                                    end = normalizedEnd
                                 )
                             )
                             selectedCategory = draft.category
@@ -440,7 +445,29 @@ private fun CompactDraftEditor(
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(start = 2.dp)
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ClockInputField(
+                label = "开始",
+                timeText = draft.start.toLocalTime().format(DRAFT_TIME_FORMATTER),
+                onTimeChanged = { localTime ->
+                    onDraftChange(draft.copy(start = draft.start.withClockTime(localTime)))
+                },
+                modifier = Modifier.weight(1f)
+            )
+            ClockInputField(
+                label = "结束",
+                timeText = draft.end.toLocalTime().format(DRAFT_TIME_FORMATTER),
+                onTimeChanged = { localTime ->
+                    onDraftChange(draft.copy(end = draft.end.withClockTime(localTime)))
+                },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -452,27 +479,12 @@ private fun CompactDraftEditor(
                 modifier = Modifier.width(74.dp),
                 onSelected = { onDraftChange(draft.copy(category = it)) }
             )
-            TextField(
+            NoteInputField(
                 value = draft.note,
                 onValueChange = { onDraftChange(draft.copy(note = it)) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(42.dp),
-                textStyle = TextStyle(
-                    lineHeight = 20.sp,
-                    platformStyle = PlatformTextStyle(includeFontPadding = true)
-                ),
-                singleLine = true,
-                maxLines = 1,
-                shape = RoundedCornerShape(14.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White,
-                    disabledContainerColor = Color.White,
-                    focusedIndicatorColor = Color(0xFF262626),
-                    unfocusedIndicatorColor = Color(0xFFB8B0A6),
-                    disabledIndicatorColor = Color(0xFFB8B0A6)
-                )
+                    .height(42.dp)
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
@@ -493,6 +505,98 @@ private fun CompactDraftEditor(
         }
     }
 }
+
+
+private val DRAFT_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+
+@Composable
+private fun ClockInputField(
+    label: String,
+    timeText: String,
+    onTimeChanged: (LocalTime) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var input by remember(timeText) { mutableStateOf(timeText) }
+    var isFocused by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = Color(0xFF757575),
+            modifier = Modifier.padding(start = 2.dp)
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, if (isFocused) Color(0xFF262626) else Color(0xFFB8B0A6)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+        ) {
+            BasicTextField(
+                value = input,
+                onValueChange = { typed ->
+                    val filtered = typed.filter { it.isDigit() || it == ':' }.take(8)
+                    input = filtered
+                    parseDraftTime(filtered)?.let(onTimeChanged)
+                },
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 15.sp, color = Color(0xFF1E1E1E), lineHeight = 20.sp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { isFocused = it.isFocused }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                decorationBox = { innerTextField ->
+                    if (input.isBlank()) {
+                        Text("HH:mm:ss", color = Color(0xFF9E9E9E), fontSize = 15.sp)
+                    }
+                    innerTextField()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoteInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, if (isFocused) Color(0xFF262626) else Color(0xFFB8B0A6)),
+        modifier = modifier
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 15.sp, color = Color(0xFF1E1E1E), lineHeight = 20.sp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { isFocused = it.isFocused }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            decorationBox = { innerTextField ->
+                if (value.isBlank()) {
+                    Text("具体事项", color = Color(0xFF9E9E9E), fontSize = 15.sp)
+                }
+                innerTextField()
+            }
+        )
+    }
+}
+
+private fun parseDraftTime(text: String): LocalTime? =
+    runCatching { LocalTime.parse(text, DRAFT_TIME_FORMATTER) }.getOrNull()
+
+private fun LocalDateTime.withClockTime(time: LocalTime): LocalDateTime =
+    withHour(time.hour).withMinute(time.minute).withSecond(time.second).withNano(0)
 
 @Composable
 private fun CategoryDropdownField(
