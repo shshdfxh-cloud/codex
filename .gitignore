@@ -1,0 +1,15 @@
+.gradle/
+.idea/
+local.properties
+build/
+app/build/
+captures/
+*.iml
+_local_tools/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
