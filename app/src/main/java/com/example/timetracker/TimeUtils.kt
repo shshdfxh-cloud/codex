@@ -2,6 +2,7 @@ package com.example.timetracker
 
 import androidx.compose.ui.graphics.Color
 import java.time.Duration
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -59,4 +60,13 @@ fun parseTime(text: String): LocalTime? {
 
 fun formatTimeRange(start: LocalTime, end: LocalTime): String {
     return "${start.format(timeFormatter)} - ${end.format(timeFormatter)}"
+}
+
+fun formatTimeRange(start: LocalDateTime, end: LocalDateTime): String {
+    val endText = if (end.toLocalTime() == LocalTime.MIDNIGHT && end.toLocalDate().isAfter(start.toLocalDate())) {
+        "24:00:00"
+    } else {
+        end.toLocalTime().format(timeFormatter)
+    }
+    return "${start.toLocalTime().format(timeFormatter)} - $endText"
 }

@@ -178,7 +178,14 @@ fun TimeTrackerApp() {
                 ).forEach { (item, icon) ->
                     NavigationBarItem(
                         selected = item == tab,
-                        onClick = { tab = item },
+                        onClick = {
+                            if (item == Tab.Overview) {
+                                selectedOverviewDateText = LocalDate.now().toString()
+                                selectedRingEntryId = null
+                                expandedEntryId = null
+                            }
+                            tab = item
+                        },
                         icon = { Icon(icon, contentDescription = item.label) },
                         label = { Text(item.label) }
                     )
@@ -233,7 +240,6 @@ fun TimeTrackerApp() {
                             }
                             entries.addAll(splitEntries)
                             selectedCategory = draft.category
-                            selectedOverviewDateText = normalizedStart.toLocalDate().toString()
                             pendingDraft = null
                             elapsedMillis = 0L
                         }

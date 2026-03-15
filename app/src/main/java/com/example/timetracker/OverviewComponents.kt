@@ -88,6 +88,7 @@ private const val TXT_EDIT_ENTRY = "编辑时间块"
 private const val TXT_START = "开始"
 private const val TXT_END = "结束"
 private const val TXT_DURATION = "时长"
+private const val TXT_DATE = "日期"
 private const val TXT_EMPTY_DAY = "这一天还没有记录。"
 private const val TXT_NO_RECORD = "暂无记录"
 
@@ -721,7 +722,7 @@ private fun SwipeableEntryCard(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = formatTimeRange(entry.start.toLocalTime(), entry.end.toLocalTime()),
+                                text = formatTimeRange(entry.start, entry.end),
                                 color = contentColor.copy(alpha = 0.9f),
                                 fontSize = 12.sp
                             )
@@ -804,8 +805,9 @@ fun EditEntryDialog(
     onSave: (TimeEntry) -> Unit
 ) {
     var category by remember(entry.id) { mutableStateOf(entry.category) }
+    var date by remember(entry.id) { mutableStateOf(entry.start.toLocalDate()) }
     var startFields by remember(entry.id) { mutableStateOf(entry.start.toLocalTime().toHmsFields()) }
-    var endFields by remember(entry.id) { mutableStateOf(entry.end.toLocalTime().toHmsFields()) }
+    var endFields by remember(entry.id) { mutableStateOf(entry.toEndHmsFields()) }
     var durationFields by remember(entry.id) { mutableStateOf(entry.duration.toHmsFields()) }
     var note by remember(entry.id) { mutableStateOf(entry.note) }
 
@@ -820,10 +822,10 @@ fun EditEntryDialog(
 
     fun updateEnd(updated: HmsFields) {
         endFields = updated
-        val start = startFields.toLocalTimeOrNull()
-        val end = updated.toLocalTimeOrNull()
-        if (start != null && end != null && !end.isBefore(start)) {
-            durationFields = Duration.between(start, end).toHmsFields()
+        val startSeconds = startFields.toSecondsOfDayOrNull()
+        val endSeconds = updated.toSecondsOfDayAllow24OrNull()
+        if (startSeconds != null && endSeconds != null && endSeconds >= startSeconds) {
+            durationFields = Duration.ofSeconds((endSeconds - startSeconds).toLong()).toHmsFields()
         }
     }
 
@@ -846,6 +848,13 @@ fun EditEntryDialog(
                     categories = categories,
                     onSelected = { category = it }
                 )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(text = TXT_DATE, color = Color(0xFF4A4A4A), fontSize = 13.sp)
+                    DateSelector(
+                        selectedDate = date,
+                        onSelectedDate = { date = it }
+                    )
+                }
                 HmsEditorRow(TXT_START, startFields, 2, ::updateStart)
                 HmsEditorRow(TXT_END, endFields, 2, ::updateEnd)
                 HmsEditorRow(TXT_DURATION, durationFields, 3, ::updateDuration)
@@ -861,11 +870,10 @@ fun EditEntryDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val date = entry.start.toLocalDate()
                     val startTime = startFields.toLocalTimeOrNull() ?: entry.start.toLocalTime()
                     val duration = durationFields.toDurationOrNull()
                     val startDateTime = LocalDateTime.of(date, startTime)
-                    val candidateEnd = endFields.toLocalTimeOrNull()?.let { LocalDateTime.of(date, it) }
+                    val candidateEnd = endFields.toEndDateTimeOrNull(date)
                     val endDateTime = when {
                         duration != null -> startDateTime.plusSeconds(duration.seconds)
                         candidateEnd != null && !candidateEnd.isBefore(startDateTime) -> candidateEnd
@@ -1079,6 +1087,46 @@ private fun HmsFields.toLocalTimeOrNull(): LocalTime? {
     val secondValue = second.toIntOrNull() ?: return null
     if (hourValue !in 0..23 || minuteValue !in 0..59 || secondValue !in 0..59) return null
     return LocalTime.of(hourValue, minuteValue, secondValue)
+}
+
+private fun HmsFields.toSecondsOfDayOrNull(): Int? {
+    val hourValue = hour.toIntOrNull() ?: return null
+    val minuteValue = minute.toIntOrNull() ?: return null
+    val secondValue = second.toIntOrNull() ?: return null
+    if (hourValue !in 0..23 || minuteValue !in 0..59 || secondValue !in 0..59) return null
+    return hourValue * 3600 + minuteValue * 60 + secondValue
+}
+
+private fun HmsFields.toSecondsOfDayAllow24OrNull(): Int? {
+    val hourValue = hour.toIntOrNull() ?: return null
+    val minuteValue = minute.toIntOrNull() ?: return null
+    val secondValue = second.toIntOrNull() ?: return null
+    return when {
+        hourValue in 0..23 && minuteValue in 0..59 && secondValue in 0..59 -> {
+            hourValue * 3600 + minuteValue * 60 + secondValue
+        }
+
+        hourValue == 24 && minuteValue == 0 && secondValue == 0 -> 24 * 3600
+        else -> null
+    }
+}
+
+private fun HmsFields.toEndDateTimeOrNull(date: LocalDate): LocalDateTime? {
+    val seconds = toSecondsOfDayAllow24OrNull() ?: return null
+    return if (seconds == 24 * 3600) {
+        date.plusDays(1).atStartOfDay()
+    } else {
+        LocalDateTime.of(date, LocalTime.ofSecondOfDay(seconds.toLong()))
+    }
+}
+
+private fun TimeEntry.toEndHmsFields(): HmsFields {
+    val isMidnightNextDay = end.toLocalTime() == LocalTime.MIDNIGHT && end.toLocalDate().isAfter(start.toLocalDate())
+    return if (isMidnightNextDay) {
+        HmsFields(hour = "24", minute = "00", second = "00")
+    } else {
+        end.toLocalTime().toHmsFields()
+    }
 }
 
 private fun HmsFields.toDurationOrNull(): Duration? {
