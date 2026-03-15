@@ -44,3 +44,4 @@ This workspace now contains a native Android prototype built with Kotlin and Jet
 
 - Rebuild debug APK: `gradlew.bat assembleDebug`
 - Output APK: `app/build/outputs/apk/debug/app-debug.apk`
+Test change from Codex
